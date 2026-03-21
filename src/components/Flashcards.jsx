@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { extractTextFromPDF } from "../utils/pdfReader";
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -39,11 +40,23 @@ export default function Flashcards({ lang = "en" }) {
   const [unknown, setUnknown] = useState([]);
   const fileRef = useRef();
 
-  const handleFile = (file) => {
+  const handleFile = async (file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setText(e.target.result);
-    reader.readAsText(file);
+    if (file.type === "application/pdf") {
+      try {
+        setLoading(true);
+        const extracted = await extractTextFromPDF(file);
+        setText(extracted);
+      } catch {
+        setError("Could not read PDF. Please try another file.");
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => setText(e.target.result);
+      reader.readAsText(file);
+    }
   };
 
   const generateCards = async () => {
@@ -67,12 +80,12 @@ ${text.slice(0, 3000)}`);
     }
   };
 
-  const next    = () => { setCurrent((c) => Math.min(c + 1, cards.length - 1)); setFlipped(false); };
-  const prev    = () => { setCurrent((c) => Math.max(c - 1, 0)); setFlipped(false); };
+  const next        = () => { setCurrent((c) => Math.min(c + 1, cards.length - 1)); setFlipped(false); };
+  const prev        = () => { setCurrent((c) => Math.max(c - 1, 0)); setFlipped(false); };
   const markKnown   = () => { setKnown((k) => [...k, current]); if (current < cards.length - 1) next(); };
   const markUnknown = () => { setUnknown((u) => [...u, current]); if (current < cards.length - 1) next(); };
-  const reset   = () => { setCurrent(0); setFlipped(false); setKnown([]); setUnknown([]); };
-  const isDone  = current === cards.length - 1 && (known.includes(current) || unknown.includes(current));
+  const reset       = () => { setCurrent(0); setFlipped(false); setKnown([]); setUnknown([]); };
+  const isDone      = current === cards.length - 1 && (known.includes(current) || unknown.includes(current));
 
   const speakCard = (txt) => {
     if (!window.speechSynthesis) return;
@@ -87,15 +100,28 @@ ${text.slice(0, 3000)}`);
       {!cards.length && (
         <div className="card">
           <div className="card-title">⚡ Flashcard Generator</div>
-          <div className="card-sub">Paste notes and AI creates flashcards in {LANG_NAMES[lang]}.</div>
+          <div className="card-sub">Upload PDF or TXT and AI creates flashcards in {LANG_NAMES[lang]}.</div>
+
+          <div className="upload-area" onClick={() => fileRef.current.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
+            <div className="upload-icon">📄</div>
+            <div className="upload-text">
+              <strong>Click or drag</strong> to upload PDF or TXT<br />
+              <span style={{ fontSize: "11px" }}>Supports .pdf and .txt files</span>
+            </div>
+            <input ref={fileRef} type="file" accept=".txt,.pdf" style={{ display: "none" }}
+              onChange={(e) => handleFile(e.target.files[0])} />
+          </div>
+
+          <div className="divider">or paste text</div>
+
           <textarea className="study-textarea" placeholder="Paste your study material here..."
             value={text} onChange={(e) => setText(e.target.value)} />
+
+          {text && <div className="mt8"><span className="tag tag-green">✓ {text.split(" ").length} words</span></div>}
+
           <div className="row mt16">
-            <label className="btn btn-ghost" style={{ cursor: "pointer" }}>
-              📎 Upload TXT
-              <input ref={fileRef} type="file" accept=".txt" style={{ display: "none" }}
-                onChange={(e) => handleFile(e.target.files[0])} />
-            </label>
             <button className="btn btn-primary" onClick={generateCards} disabled={loading || !text.trim()}>
               {loading ? <><span className="spinner" /> Generating...</> : "⚡ Generate Cards"}
             </button>

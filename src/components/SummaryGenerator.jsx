@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { extractTextFromPDF } from "../utils/pdfReader";
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -39,11 +40,23 @@ export default function SummaryGenerator({ lang = "en" }) {
   const [activeSection, setActiveSection] = useState("summary");
   const fileRef = useRef();
 
-  const handleFile = (file) => {
+  const handleFile = async (file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setText(e.target.result);
-    reader.readAsText(file);
+    if (file.type === "application/pdf") {
+      try {
+        setLoading(true);
+        const extracted = await extractTextFromPDF(file);
+        setText(extracted);
+      } catch {
+        setError("Could not read PDF. Please try another file.");
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => setText(e.target.result);
+      reader.readAsText(file);
+    }
   };
 
   const generateSummary = async () => {
@@ -78,7 +91,6 @@ ${text.slice(0, 4000)}`);
       const historyText = history.length
         ? `Recent quiz performance: ${history.slice(0, 5).map(h => `${Math.round((h.score / h.total) * 100)}% (${h.difficulty})`).join(", ")}`
         : "No quiz history available.";
-
       const raw = await askGroq(`Based on the following study material and quiz performance, identify the top 5 weak topics the student should focus on.
 
 ${historyText}
@@ -87,11 +99,8 @@ Study material:
 ${text.slice(0, 3000)}
 
 Return ONLY a valid JSON array, no markdown, no explanation:
-[
-  { "topic": "Topic name", "reason": "Why this is weak", "score": 35 }
-]
+[{ "topic": "Topic name", "reason": "Why this is weak", "score": 35 }]
 where score is 0-100 (lower = weaker).`);
-
       const cleaned = raw.replace(/```json|```/g, "").trim();
       setWeakTopics(JSON.parse(cleaned));
       setActiveSection("weak");
@@ -130,7 +139,7 @@ where score is 0-100 (lower = weaker).`);
         </style>
       </head>
       <body>
-        <h1>StudyAI — Summary</h1>
+        <h1>StudyAI Summary</h1>
         <div class="meta">Generated on ${new Date().toLocaleDateString()} · Language: ${LANG_NAMES[lang]}</div>
         <pre>${summary}</pre>
         ${weakTopics.length ? `
@@ -140,8 +149,7 @@ where score is 0-100 (lower = weaker).`);
             <div class="weak-item">
               <strong>${t.topic}</strong> (${t.score}% mastery)<br/>
               <span style="color:#888">${t.reason}</span>
-            </div>
-          `).join("")}
+            </div>`).join("")}
         </div>` : ""}
       </body>
       </html>`;
@@ -161,14 +169,17 @@ where score is 0-100 (lower = weaker).`);
     <div>
       <div className="card">
         <div className="card-title">📝 Summary & Weak Topics</div>
-        <div className="card-sub">Generate an AI summary of your notes and detect which topics need more attention.</div>
+        <div className="card-sub">Upload PDF or TXT and get an AI summary plus weak topic analysis.</div>
 
         <div className="upload-area" onClick={() => fileRef.current.click()}
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
           <div className="upload-icon">📄</div>
-          <div className="upload-text"><strong>Click or drag</strong> to upload TXT</div>
-          <input ref={fileRef} type="file" className="upload-input" accept=".txt"
+          <div className="upload-text">
+            <strong>Click or drag</strong> to upload PDF or TXT<br />
+            <span style={{ fontSize: "11px" }}>Supports .pdf and .txt files</span>
+          </div>
+          <input ref={fileRef} type="file" className="upload-input" accept=".txt,.pdf"
             onChange={(e) => handleFile(e.target.files[0])} />
         </div>
 

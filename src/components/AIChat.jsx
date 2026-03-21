@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
+import { extractTextFromPDF } from "../utils/pdfReader";
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -24,11 +25,33 @@ export default function AIChat({ lang = "en" }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [error, setError] = useState("");
   const bottomRef = useRef(null);
+  const fileRef = useRef();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (file.type === "application/pdf") {
+      try {
+        setFileLoading(true);
+        const extracted = await extractTextFromPDF(file);
+        setContext(extracted);
+      } catch {
+        setError("Could not read PDF. Please try another file.");
+      } finally {
+        setFileLoading(false);
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => setContext(e.target.result);
+      reader.readAsText(file);
+    }
+  };
 
   const setStudyContext = () => {
     if (!context.trim()) return;
@@ -62,7 +85,7 @@ export default function AIChat({ lang = "en" }) {
 ---
 ${context.slice(0, 4000)}
 ---
-Answer all questions based on this material. Be concise and educational. Always respond in ${LANG_NAMES[lang] || "English"}. Do not use bullet points, asterisks, emojis or markdown symbols in your response — use plain text only.`
+Answer all questions based on this material. Be concise and educational. Always respond in ${LANG_NAMES[lang] || "English"}. Do not use bullet points, asterisks, emojis or markdown symbols — use plain text only.`
             },
             ...history,
             { role: "user", content: userMsg }
@@ -71,8 +94,7 @@ Answer all questions based on this material. Be concise and educational. Always 
         })
       });
       const data = await res.json();
-      const reply = data.choices[0].message.content;
-      setMessages((m) => [...m, { role: "ai", content: reply }]);
+      setMessages((m) => [...m, { role: "ai", content: data.choices[0].message.content }]);
     } catch {
       setMessages((m) => [...m, { role: "ai", content: "Sorry, I could not respond. Please try again." }]);
     } finally {
@@ -80,7 +102,7 @@ Answer all questions based on this material. Be concise and educational. Always 
     }
   };
 
-  const clearChat = () => { setMessages([]); setContextSet(false); setContext(""); };
+  const clearChat = () => { setMessages([]); setContextSet(false); setContext(""); setError(""); };
 
   const speak = (text) => {
     if (!window.speechSynthesis) return;
@@ -95,13 +117,32 @@ Answer all questions based on this material. Be concise and educational. Always 
       {!contextSet ? (
         <div className="card">
           <div className="card-title">💬 Chat with Your Notes</div>
-          <div className="card-sub">Paste your study material and ask any question about it. AI will answer based on your notes.</div>
+          <div className="card-sub">Upload PDF or TXT or paste your study material and ask any question about it.</div>
+
+          <div className="upload-area" onClick={() => fileRef.current.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
+            <div className="upload-icon">📄</div>
+            <div className="upload-text">
+              <strong>Click or drag</strong> to upload PDF or TXT<br />
+              <span style={{ fontSize: "11px" }}>Supports .pdf and .txt files</span>
+            </div>
+            <input ref={fileRef} type="file" accept=".txt,.pdf" style={{ display: "none" }}
+              onChange={(e) => handleFile(e.target.files[0])} />
+          </div>
+
+          <div className="divider">or paste text</div>
+
           <textarea className="study-textarea"
             placeholder="Paste your study notes or textbook content here..."
             value={context} onChange={(e) => setContext(e.target.value)} />
-          {context && <div className="mt8"><span className="tag tag-green">✓ {context.split(" ").length} words</span></div>}
+
+          {fileLoading && <p style={{ fontSize: "13px", color: "var(--accent)", marginTop: "8px" }}>📄 Reading PDF...</p>}
+          {context && <div className="mt8"><span className="tag tag-green">✓ {context.split(" ").length} words loaded</span></div>}
+          {error && <p style={{ color: "var(--danger)", fontSize: "13px", marginTop: "8px" }}>⚠️ {error}</p>}
+
           <div className="mt16">
-            <button className="btn btn-primary" onClick={setStudyContext} disabled={!context.trim()}>
+            <button className="btn btn-primary" onClick={setStudyContext} disabled={!context.trim() || fileLoading}>
               💬 Start Chat →
             </button>
           </div>

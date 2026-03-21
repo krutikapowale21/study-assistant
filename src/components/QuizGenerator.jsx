@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { extractTextFromPDF } from "../utils/pdfReader";
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -41,11 +42,23 @@ export default function QuizGenerator({ lang = "en" }) {
   const [speaking, setSpeaking] = useState(null);
   const fileRef = useRef();
 
-  const handleFile = (file) => {
+  const handleFile = async (file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setText(e.target.result);
-    reader.readAsText(file);
+    if (file.type === "application/pdf") {
+      try {
+        setLoading(true);
+        const extracted = await extractTextFromPDF(file);
+        setText(extracted);
+      } catch {
+        setError("Could not read PDF. Please try another file.");
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => setText(e.target.result);
+      reader.readAsText(file);
+    }
   };
 
   const generateQuiz = async () => {
@@ -108,7 +121,7 @@ ${text.slice(0, 3000)}`);
       {!quiz.length && (
         <div className="card">
           <div className="card-title">🧠 AI Quiz Generator</div>
-          <div className="card-sub">Upload a TXT file or paste notes — AI generates a quiz in {LANG_NAMES[lang]}.</div>
+          <div className="card-sub">Upload a PDF or TXT file or paste notes — AI generates a quiz in {LANG_NAMES[lang]}.</div>
 
           <div className={`upload-area ${dragOver ? "drag-over" : ""}`}
             onClick={() => fileRef.current.click()}
@@ -116,8 +129,11 @@ ${text.slice(0, 3000)}`);
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}>
             <div className="upload-icon">📄</div>
-            <div className="upload-text"><strong>Click or drag</strong> to upload TXT</div>
-            <input ref={fileRef} type="file" className="upload-input" accept=".txt"
+            <div className="upload-text">
+              <strong>Click or drag</strong> to upload PDF or TXT<br />
+              <span style={{ fontSize: "11px" }}>Supports .pdf and .txt files</span>
+            </div>
+            <input ref={fileRef} type="file" className="upload-input" accept=".txt,.pdf"
               onChange={(e) => handleFile(e.target.files[0])} />
           </div>
 
