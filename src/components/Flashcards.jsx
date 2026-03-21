@@ -1,6 +1,27 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const MODEL = "llama3-70b-8192";
+
+async function askGroq(prompt) {
+  const res = await fetch(GROQ_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+    }),
+  });
+  const data = await res.json();
+  return data.choices[0].message.content;
+}
+
 export default function Flashcards() {
   const [text, setText] = useState("");
   const [cards, setCards] = useState([]);
@@ -24,29 +45,18 @@ export default function Flashcards() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{
-            role: "user",
-            content: `Generate 10 flashcards from the following study material. Each card should have a concise question/term on the front and a clear answer/definition on the back.
+      const raw = await askGroq(`Generate 10 flashcards from the following study material. Each card should have a concise question/term on the front and a clear answer/definition on the back.
 
-Return ONLY a valid JSON array, no markdown, no explanation:
+Return ONLY a valid JSON array, no markdown, no backticks, no explanation:
 [
   { "front": "Term or question", "back": "Definition or answer" }
 ]
 
 Study material:
-${text.slice(0, 3000)}`
-          }]
-        })
-      });
-      const data = await res.json();
-      const raw = data.content[0].text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(raw);
+${text.slice(0, 3000)}`);
+
+      const cleaned = raw.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
       setCards(parsed);
       setCurrent(0);
       setFlipped(false);
@@ -61,29 +71,13 @@ ${text.slice(0, 3000)}`
 
   const next = () => { setCurrent((c) => Math.min(c + 1, cards.length - 1)); setFlipped(false); };
   const prev = () => { setCurrent((c) => Math.max(c - 1, 0)); setFlipped(false); };
-
-  const markKnown = () => {
-    setKnown((k) => [...k, current]);
-    if (current < cards.length - 1) next();
-  };
-
-  const markUnknown = () => {
-    setUnknown((u) => [...u, current]);
-    if (current < cards.length - 1) next();
-  };
-
-  const reset = () => {
-    setCurrent(0);
-    setFlipped(false);
-    setKnown([]);
-    setUnknown([]);
-  };
-
+  const markKnown = () => { setKnown((k) => [...k, current]); if (current < cards.length - 1) next(); };
+  const markUnknown = () => { setUnknown((u) => [...u, current]); if (current < cards.length - 1) next(); };
+  const reset = () => { setCurrent(0); setFlipped(false); setKnown([]); setUnknown([]); };
   const isDone = current === cards.length - 1 && (known.includes(current) || unknown.includes(current));
 
   return (
     <div>
-      {/* Input */}
       {!cards.length && (
         <div className="card">
           <div className="card-title">⚡ Flashcard Generator</div>
@@ -110,10 +104,8 @@ ${text.slice(0, 3000)}`
         </div>
       )}
 
-      {/* Flashcards */}
       {cards.length > 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          {/* Stats */}
           <div className="row" style={{ marginBottom: "16px", justifyContent: "space-between" }}>
             <div className="row">
               <span className="tag tag-green">✓ {known.length} Known</span>
@@ -124,7 +116,6 @@ ${text.slice(0, 3000)}`
             <button className="btn btn-ghost" onClick={() => setCards([])}>← New Set</button>
           </div>
 
-          {/* Progress bar */}
           <div className="progress-bar-wrap" style={{ marginBottom: "20px" }}>
             <div className="progress-bar-label">
               <span>Progress</span>
@@ -135,7 +126,6 @@ ${text.slice(0, 3000)}`
             </div>
           </div>
 
-          {/* Card */}
           <div className="flashcard-scene" onClick={() => setFlipped((f) => !f)}>
             <div className={`flashcard-inner ${flipped ? "flipped" : ""}`}>
               <div className="flashcard-face flashcard-front">
@@ -150,20 +140,17 @@ ${text.slice(0, 3000)}`
             </div>
           </div>
 
-          {/* Navigation */}
           <div className="flashcard-nav">
             <button className="btn btn-ghost" onClick={prev} disabled={current === 0}>← Prev</button>
             <span className="flashcard-counter">{current + 1} / {cards.length}</span>
             <button className="btn btn-ghost" onClick={next} disabled={current === cards.length - 1}>Next →</button>
           </div>
 
-          {/* Know it? */}
           <div className="row" style={{ justifyContent: "center", gap: "12px" }}>
             <button className="btn btn-danger" onClick={markUnknown}>✗ Need Review</button>
             <button className="btn btn-success" onClick={markKnown}>✓ Got It!</button>
           </div>
 
-          {/* Done state */}
           {isDone && known.length + unknown.length === cards.length && (
             <motion.div className="card" style={{ marginTop: "20px", textAlign: "center" }}
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
