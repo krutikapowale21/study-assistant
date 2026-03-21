@@ -6,6 +6,7 @@ import ProgressTracker from "./components/ProgressTracker";
 import PomodoroTimer from "./components/PomodoroTimer";
 import AIChat from "./components/AIChat";
 import SummaryGenerator from "./components/SummaryGenerator";
+import LibrarySidebar from "./components/LibrarySidebar";
 import "./App.css";
 
 const TABS = [
@@ -34,7 +35,6 @@ function useStreak() {
     const storedDate = localStorage.getItem("lastStudyDate");
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-
     if (storedDate === today) {
       setStreak(stored || 1);
     } else if (storedDate === yesterday.toDateString()) {
@@ -55,6 +55,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("quiz");
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("darkMode") !== "false");
   const [lang, setLang] = useState(() => localStorage.getItem("studyLang") || "en");
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [loadedEntry, setLoadedEntry] = useState(null);
   const streak = useStreak();
 
   useEffect(() => {
@@ -64,22 +66,45 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem("studyLang", lang); }, [lang]);
 
+  // When user loads an entry from library — switch to correct tab
+  const handleLibraryLoad = (entry) => {
+    setLoadedEntry(entry);
+    if (entry.type === "notes")      setActiveTab("quiz");
+    if (entry.type === "quiz")       setActiveTab("quiz");
+    if (entry.type === "flashcards") setActiveTab("flash");
+    if (entry.type === "summary")    setActiveTab("summary");
+  };
+
   return (
     <div className="app">
       <div className="bg-grid" />
       <div className="bg-glow" />
 
+      {/* Library Sidebar */}
+      <LibrarySidebar
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onLoad={handleLibraryLoad}
+      />
+
+      {/* Header */}
       <motion.header className="header"
         initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
         <div className="header-top">
           <motion.div className="streak-badge" whileHover={{ scale: 1.08 }} title="Study streak">
             🔥 {streak} day{streak !== 1 ? "s" : ""}
           </motion.div>
+
           <div className="logo">
             <span className="logo-icon">📚</span>
             <span className="logo-text">StudyAI</span>
           </div>
+
           <div className="header-controls">
+            {/* Library button */}
+            <button className="library-btn" onClick={() => setLibraryOpen(true)} title="Open library">
+              🗂️
+            </button>
             <select className="lang-select" value={lang} onChange={(e) => setLang(e.target.value)}>
               {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
             </select>
@@ -91,6 +116,7 @@ export default function App() {
         <p className="logo-sub">Your AI-powered study companion</p>
       </motion.header>
 
+      {/* Tabs */}
       <motion.nav className="tabs"
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}>
         {TABS.map((tab) => (
@@ -103,15 +129,16 @@ export default function App() {
         ))}
       </motion.nav>
 
+      {/* Content */}
       <main className="main">
         <AnimatePresence mode="wait">
           <motion.div key={activeTab}
             initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -24 }} transition={{ duration: 0.35 }} className="tab-content">
-            {activeTab === "quiz"     && <QuizGenerator lang={lang} />}
-            {activeTab === "flash"    && <Flashcards lang={lang} />}
+            {activeTab === "quiz"     && <QuizGenerator lang={lang} loadedEntry={loadedEntry} onEntrySaved={() => setLoadedEntry(null)} />}
+            {activeTab === "flash"    && <Flashcards lang={lang} loadedEntry={loadedEntry} onEntrySaved={() => setLoadedEntry(null)} />}
             {activeTab === "chat"     && <AIChat lang={lang} />}
-            {activeTab === "summary"  && <SummaryGenerator lang={lang} />}
+            {activeTab === "summary"  && <SummaryGenerator lang={lang} loadedEntry={loadedEntry} onEntrySaved={() => setLoadedEntry(null)} />}
             {activeTab === "progress" && <ProgressTracker />}
             {activeTab === "pomodoro" && <PomodoroTimer />}
           </motion.div>
