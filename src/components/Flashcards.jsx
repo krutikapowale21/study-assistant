@@ -4,25 +4,19 @@ import { motion, AnimatePresence } from "framer-motion";
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = "llama-3.3-70b-versatile";
+const LANG_NAMES = { en: "English", hi: "Hindi", es: "Spanish", fr: "French", de: "German", ja: "Japanese" };
 
 async function askGroq(prompt) {
   const res = await fetch(GROQ_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-    }),
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
+    body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.7 })
   });
   const data = await res.json();
   return data.choices[0].message.content;
 }
 
-export default function Flashcards() {
+export default function Flashcards({ lang = "en" }) {
   const [text, setText] = useState("");
   const [cards, setCards] = useState([]);
   const [current, setCurrent] = useState(0);
@@ -42,26 +36,18 @@ export default function Flashcards() {
 
   const generateCards = async () => {
     if (!text.trim()) { setError("Please add some study material first."); return; }
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
-      const raw = await askGroq(`Generate 10 flashcards from the following study material. Each card should have a concise question/term on the front and a clear answer/definition on the back.
+      const raw = await askGroq(`Generate 10 flashcards from the following study material in ${LANG_NAMES[lang] || "English"}. Each card should have a concise question/term on the front and a clear answer/definition on the back.
 
-Return ONLY a valid JSON array, no markdown, no backticks, no explanation:
-[
-  { "front": "Term or question", "back": "Definition or answer" }
-]
+Return ONLY a valid JSON array, no markdown, no backticks:
+[{ "front": "Term or question", "back": "Definition or answer" }]
 
 Study material:
 ${text.slice(0, 3000)}`);
-
       const cleaned = raw.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
-      setCards(parsed);
-      setCurrent(0);
-      setFlipped(false);
-      setKnown([]);
-      setUnknown([]);
+      setCards(JSON.parse(cleaned));
+      setCurrent(0); setFlipped(false); setKnown([]); setUnknown([]);
     } catch {
       setError("Failed to generate flashcards. Please try again.");
     } finally {
@@ -69,27 +55,29 @@ ${text.slice(0, 3000)}`);
     }
   };
 
-  const next = () => { setCurrent((c) => Math.min(c + 1, cards.length - 1)); setFlipped(false); };
-  const prev = () => { setCurrent((c) => Math.max(c - 1, 0)); setFlipped(false); };
-  const markKnown = () => { setKnown((k) => [...k, current]); if (current < cards.length - 1) next(); };
+  const next    = () => { setCurrent((c) => Math.min(c + 1, cards.length - 1)); setFlipped(false); };
+  const prev    = () => { setCurrent((c) => Math.max(c - 1, 0)); setFlipped(false); };
+  const markKnown   = () => { setKnown((k) => [...k, current]); if (current < cards.length - 1) next(); };
   const markUnknown = () => { setUnknown((u) => [...u, current]); if (current < cards.length - 1) next(); };
-  const reset = () => { setCurrent(0); setFlipped(false); setKnown([]); setUnknown([]); };
-  const isDone = current === cards.length - 1 && (known.includes(current) || unknown.includes(current));
+  const reset   = () => { setCurrent(0); setFlipped(false); setKnown([]); setUnknown([]); };
+  const isDone  = current === cards.length - 1 && (known.includes(current) || unknown.includes(current));
+
+  const speakCard = (txt) => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(txt);
+    u.lang = lang === "hi" ? "hi-IN" : lang === "ja" ? "ja-JP" : lang === "es" ? "es-ES" : "en-US";
+    window.speechSynthesis.speak(u);
+  };
 
   return (
     <div>
       {!cards.length && (
         <div className="card">
           <div className="card-title">⚡ Flashcard Generator</div>
-          <div className="card-sub">Paste your notes and AI will create flashcards you can flip through and study.</div>
-
-          <textarea
-            className="study-textarea"
-            placeholder="Paste your study material here..."
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-
+          <div className="card-sub">Paste notes and AI creates flashcards in {LANG_NAMES[lang]}.</div>
+          <textarea className="study-textarea" placeholder="Paste your study material here..."
+            value={text} onChange={(e) => setText(e.target.value)} />
           <div className="row mt16">
             <label className="btn btn-ghost" style={{ cursor: "pointer" }}>
               📎 Upload TXT
@@ -109,18 +97,15 @@ ${text.slice(0, 3000)}`);
           <div className="row" style={{ marginBottom: "16px", justifyContent: "space-between" }}>
             <div className="row">
               <span className="tag tag-green">✓ {known.length} Known</span>
-              <span className="tag" style={{ background: "rgba(247,79,79,0.15)", color: "var(--danger)", border: "1px solid rgba(247,79,79,0.2)" }}>
+              <span className="tag" style={{ background: "rgba(247,79,79,0.12)", color: "var(--danger)", border: "1px solid rgba(247,79,79,0.2)" }}>
                 ✗ {unknown.length} Review
               </span>
             </div>
             <button className="btn btn-ghost" onClick={() => setCards([])}>← New Set</button>
           </div>
 
-          <div className="progress-bar-wrap" style={{ marginBottom: "20px" }}>
-            <div className="progress-bar-label">
-              <span>Progress</span>
-              <span>{current + 1} / {cards.length}</span>
-            </div>
+          <div className="progress-bar-wrap" style={{ marginBottom: "18px" }}>
+            <div className="progress-bar-label"><span>Progress</span><span>{current + 1} / {cards.length}</span></div>
             <div className="progress-bar-track">
               <div className="progress-bar-fill" style={{ width: `${((current + 1) / cards.length) * 100}%` }} />
             </div>
@@ -140,6 +125,13 @@ ${text.slice(0, 3000)}`);
             </div>
           </div>
 
+          {/* TTS for card */}
+          <div className="row" style={{ justifyContent: "center", marginBottom: "12px" }}>
+            <button className="tts-btn" onClick={() => speakCard(flipped ? cards[current].back : cards[current].front)}>
+              🔊 Read aloud
+            </button>
+          </div>
+
           <div className="flashcard-nav">
             <button className="btn btn-ghost" onClick={prev} disabled={current === 0}>← Prev</button>
             <span className="flashcard-counter">{current + 1} / {cards.length}</span>
@@ -156,9 +148,7 @@ ${text.slice(0, 3000)}`);
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
               <div style={{ fontSize: "32px", marginBottom: "8px" }}>🎉</div>
               <div className="card-title">Round Complete!</div>
-              <div className="card-sub" style={{ margin: "8px 0 16px" }}>
-                {known.length} known · {unknown.length} need review
-              </div>
+              <div className="card-sub" style={{ margin: "8px 0 16px" }}>{known.length} known · {unknown.length} need review</div>
               <div className="row" style={{ justifyContent: "center" }}>
                 <button className="btn btn-ghost" onClick={reset}>🔄 Restart</button>
                 <button className="btn btn-primary" onClick={() => setCards([])}>📝 New Set</button>
