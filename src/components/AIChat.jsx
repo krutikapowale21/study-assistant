@@ -4,8 +4,19 @@ import { motion } from "framer-motion";
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = "llama-3.3-70b-versatile";
-
 const LANG_NAMES = { en: "English", hi: "Hindi", es: "Spanish", fr: "French", de: "German", ja: "Japanese" };
+
+function cleanForSpeech(text) {
+  return text
+    .replace(/[*#_~`>]/g, "")
+    .replace(/\p{Emoji}/gu, "")
+    .replace(/[•·●■□▪▫–—]/g, "")
+    .replace(/\d+\.\s/g, "")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 
 export default function AIChat({ lang = "en" }) {
   const [context, setContext] = useState("");
@@ -24,7 +35,7 @@ export default function AIChat({ lang = "en" }) {
     setContextSet(true);
     setMessages([{
       role: "ai",
-      content: `📚 Context loaded! I've read your study material (${context.split(" ").length} words). Ask me anything about it — I'll answer in ${LANG_NAMES[lang] || "English"}!`
+      content: `Context loaded! I have read your study material (${context.split(" ").length} words). Ask me anything about it and I will answer in ${LANG_NAMES[lang] || "English"}!`
     }]);
   };
 
@@ -34,7 +45,6 @@ export default function AIChat({ lang = "en" }) {
     setInput("");
     setMessages((m) => [...m, { role: "user", content: userMsg }]);
     setLoading(true);
-
     try {
       const history = messages
         .filter((m) => m.role !== "ai" || messages.indexOf(m) > 0)
@@ -49,12 +59,10 @@ export default function AIChat({ lang = "en" }) {
             {
               role: "system",
               content: `You are a helpful study assistant. The student has provided the following study material as context:
-
 ---
 ${context.slice(0, 4000)}
 ---
-
-Answer all questions based on this material. Be concise and educational. Always respond in ${LANG_NAMES[lang] || "English"}.`
+Answer all questions based on this material. Be concise and educational. Always respond in ${LANG_NAMES[lang] || "English"}. Do not use bullet points, asterisks, emojis or markdown symbols in your response — use plain text only.`
             },
             ...history,
             { role: "user", content: userMsg }
@@ -66,23 +74,18 @@ Answer all questions based on this material. Be concise and educational. Always 
       const reply = data.choices[0].message.content;
       setMessages((m) => [...m, { role: "ai", content: reply }]);
     } catch {
-      setMessages((m) => [...m, { role: "ai", content: "⚠️ Sorry, I couldn't respond. Please try again." }]);
+      setMessages((m) => [...m, { role: "ai", content: "Sorry, I could not respond. Please try again." }]);
     } finally {
       setLoading(false);
     }
   };
 
-  const clearChat = () => {
-    setMessages([]);
-    setContextSet(false);
-    setContext("");
-  };
+  const clearChat = () => { setMessages([]); setContextSet(false); setContext(""); };
 
-  // TTS
   const speak = (text) => {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance(cleanForSpeech(text));
     u.lang = lang === "hi" ? "hi-IN" : lang === "ja" ? "ja-JP" : lang === "es" ? "es-ES" : lang === "fr" ? "fr-FR" : lang === "de" ? "de-DE" : "en-US";
     window.speechSynthesis.speak(u);
   };
@@ -93,12 +96,9 @@ Answer all questions based on this material. Be concise and educational. Always 
         <div className="card">
           <div className="card-title">💬 Chat with Your Notes</div>
           <div className="card-sub">Paste your study material and ask any question about it. AI will answer based on your notes.</div>
-          <textarea
-            className="study-textarea"
+          <textarea className="study-textarea"
             placeholder="Paste your study notes or textbook content here..."
-            value={context}
-            onChange={(e) => setContext(e.target.value)}
-          />
+            value={context} onChange={(e) => setContext(e.target.value)} />
           {context && <div className="mt8"><span className="tag tag-green">✓ {context.split(" ").length} words</span></div>}
           <div className="mt16">
             <button className="btn btn-primary" onClick={setStudyContext} disabled={!context.trim()}>
@@ -112,7 +112,7 @@ Answer all questions based on this material. Be concise and educational. Always 
             <div className="card-title" style={{ marginBottom: 0 }}>💬 AI Chat</div>
             <div className="row">
               <span className="tag tag-green" style={{ fontSize: "11px" }}>
-                📚 {context.split(" ").length} words loaded
+                {context.split(" ").length} words loaded
               </span>
               <button className="btn btn-ghost" style={{ padding: "6px 14px", fontSize: "12px" }} onClick={clearChat}>
                 ✕ Clear
@@ -147,23 +147,20 @@ Answer all questions based on this material. Be concise and educational. Always 
           </div>
 
           <div className="chat-input-row">
-            <input
-              className="chat-input"
+            <input className="chat-input"
               placeholder={`Ask anything about your notes... (${LANG_NAMES[lang]})`}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            />
+              onKeyDown={(e) => e.key === "Enter" && sendMessage()} />
             <button className="btn btn-primary" onClick={sendMessage} disabled={loading || !input.trim()}>
               Send →
             </button>
           </div>
 
-          {/* Quick questions */}
           <div className="row mt16" style={{ flexWrap: "wrap" }}>
             {["Summarize this", "What are key points?", "Give me examples", "What should I focus on?"].map((q) => (
               <button key={q} className="btn btn-ghost" style={{ fontSize: "11px", padding: "6px 12px" }}
-                onClick={() => { setInput(q); }}>
+                onClick={() => setInput(q)}>
                 {q}
               </button>
             ))}

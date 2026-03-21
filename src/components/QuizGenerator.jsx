@@ -6,6 +6,18 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = "llama-3.3-70b-versatile";
 const LANG_NAMES = { en: "English", hi: "Hindi", es: "Spanish", fr: "French", de: "German", ja: "Japanese" };
 
+function cleanForSpeech(text) {
+  return text
+    .replace(/[*#_~`>]/g, "")
+    .replace(/\p{Emoji}/gu, "")
+    .replace(/[•·●■□▪▫–—]/g, "")
+    .replace(/\d+\.\s/g, "")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 async function askGroq(prompt) {
   const res = await fetch(GROQ_URL, {
     method: "POST",
@@ -40,7 +52,7 @@ export default function QuizGenerator({ lang = "en" }) {
     if (!text.trim()) { setError("Please add some study material first."); return; }
     setLoading(true); setError(""); setQuiz([]); setAnswers({}); setSubmitted(false);
     try {
-      const raw = await askGroq(`You are a quiz generator. Based on the following study material, generate exactly ${numQ} multiple choice questions at ${difficulty} difficulty. Generate the questions and answers in ${LANG_NAMES[lang] || "English"}.
+      const raw = await askGroq(`You are a quiz generator. Based on the following study material, generate exactly ${numQ} multiple choice questions at ${difficulty} difficulty. Generate questions and answers in ${LANG_NAMES[lang] || "English"}.
 
 Return ONLY a valid JSON array, no markdown, no explanation, no backticks:
 [
@@ -81,7 +93,7 @@ ${text.slice(0, 3000)}`);
     if (!window.speechSynthesis) return;
     if (speaking === idx) { window.speechSynthesis.cancel(); setSpeaking(null); return; }
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance(cleanForSpeech(text));
     u.lang = lang === "hi" ? "hi-IN" : lang === "ja" ? "ja-JP" : lang === "es" ? "es-ES" : "en-US";
     u.onend = () => setSpeaking(null);
     window.speechSynthesis.speak(u);
@@ -183,9 +195,9 @@ ${text.slice(0, 3000)}`);
               <div className="score-num">{pct}%</div>
               <div className="score-label">{score} / {quiz.length} correct</div>
               <div className="row" style={{ justifyContent: "center" }}>
-                {pct >= 80 && <span className="tag tag-green">🎉 Excellent!</span>}
-                {pct >= 50 && pct < 80 && <span className="tag tag-gold">👍 Good job!</span>}
-                {pct < 50 && <span className="tag tag-blue">📖 Keep studying!</span>}
+                {pct >= 80 && <span className="tag tag-green">Excellent!</span>}
+                {pct >= 50 && pct < 80 && <span className="tag tag-gold">Good job!</span>}
+                {pct < 50 && <span className="tag tag-blue">Keep studying!</span>}
               </div>
             </div>
 

@@ -6,6 +6,18 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = "llama-3.3-70b-versatile";
 const LANG_NAMES = { en: "English", hi: "Hindi", es: "Spanish", fr: "French", de: "German", ja: "Japanese" };
 
+function cleanForSpeech(text) {
+  return text
+    .replace(/[*#_~`>]/g, "")
+    .replace(/\p{Emoji}/gu, "")
+    .replace(/[•·●■□▪▫–—]/g, "")
+    .replace(/\d+\.\s/g, "")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 async function askGroq(prompt) {
   const res = await fetch(GROQ_URL, {
     method: "POST",
@@ -41,10 +53,12 @@ export default function SummaryGenerator({ lang = "en" }) {
       const raw = await askGroq(`Summarize the following study material clearly and concisely in ${LANG_NAMES[lang] || "English"}.
 
 Structure your summary with:
-1. 📌 Main Topic (1 sentence)
-2. 🔑 Key Points (5-7 bullet points)
-3. 💡 Important Definitions (if any)
-4. ✅ Quick Takeaway (2-3 sentences)
+1. Main Topic (1 sentence)
+2. Key Points (5-7 bullet points)
+3. Important Definitions (if any)
+4. Quick Takeaway (2-3 sentences)
+
+Use plain text only. No emojis, no markdown symbols, no asterisks.
 
 Study material:
 ${text.slice(0, 4000)}`);
@@ -62,7 +76,7 @@ ${text.slice(0, 4000)}`);
     try {
       const history = JSON.parse(localStorage.getItem("quizHistory") || "[]");
       const historyText = history.length
-        ? `Recent quiz performance: ${history.slice(0, 5).map(h => `${Math.round((h.score/h.total)*100)}% (${h.difficulty})`).join(", ")}`
+        ? `Recent quiz performance: ${history.slice(0, 5).map(h => `${Math.round((h.score / h.total) * 100)}% (${h.difficulty})`).join(", ")}`
         : "No quiz history available.";
 
       const raw = await askGroq(`Based on the following study material and quiz performance, identify the top 5 weak topics the student should focus on.
@@ -76,11 +90,10 @@ Return ONLY a valid JSON array, no markdown, no explanation:
 [
   { "topic": "Topic name", "reason": "Why this is weak", "score": 35 }
 ]
-where score is 0-100 (lower = weaker, needs more attention).`);
+where score is 0-100 (lower = weaker).`);
 
       const cleaned = raw.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
-      setWeakTopics(parsed);
+      setWeakTopics(JSON.parse(cleaned));
       setActiveSection("weak");
     } catch {
       setError("Failed to detect weak topics. Please try again.");
@@ -89,15 +102,10 @@ where score is 0-100 (lower = weaker, needs more attention).`);
     }
   };
 
-  // ── Text to Speech ──
   const toggleTTS = () => {
-    if (!window.speechSynthesis) { alert("Your browser doesn't support text to speech."); return; }
-    if (speaking) {
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
-      return;
-    }
-    const u = new SpeechSynthesisUtterance(summary);
+    if (!window.speechSynthesis) { alert("Your browser does not support text to speech."); return; }
+    if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
+    const u = new SpeechSynthesisUtterance(cleanForSpeech(summary));
     u.lang = lang === "hi" ? "hi-IN" : lang === "ja" ? "ja-JP" : lang === "es" ? "es-ES" : lang === "fr" ? "fr-FR" : lang === "de" ? "de-DE" : "en-US";
     u.rate = 0.9;
     u.onend = () => setSpeaking(false);
@@ -106,7 +114,6 @@ where score is 0-100 (lower = weaker, needs more attention).`);
     setSpeaking(true);
   };
 
-  // ── Export as PDF (using print) ──
   const exportPDF = () => {
     const content = `
       <html>
@@ -123,12 +130,12 @@ where score is 0-100 (lower = weaker, needs more attention).`);
         </style>
       </head>
       <body>
-        <h1>📚 StudyAI — Summary</h1>
+        <h1>StudyAI — Summary</h1>
         <div class="meta">Generated on ${new Date().toLocaleDateString()} · Language: ${LANG_NAMES[lang]}</div>
         <pre>${summary}</pre>
         ${weakTopics.length ? `
         <div class="weak">
-          <h2>⚠️ Weak Topics to Focus On</h2>
+          <h2>Weak Topics to Focus On</h2>
           ${weakTopics.map(t => `
             <div class="weak-item">
               <strong>${t.topic}</strong> (${t.score}% mastery)<br/>
@@ -137,8 +144,7 @@ where score is 0-100 (lower = weaker, needs more attention).`);
           `).join("")}
         </div>` : ""}
       </body>
-      </html>
-    `;
+      </html>`;
     const win = window.open("", "_blank");
     win.document.write(content);
     win.document.close();
@@ -153,17 +159,13 @@ where score is 0-100 (lower = weaker, needs more attention).`);
 
   return (
     <div>
-      {/* Input */}
       <div className="card">
         <div className="card-title">📝 Summary & Weak Topics</div>
         <div className="card-sub">Generate an AI summary of your notes and detect which topics need more attention.</div>
 
-        <div
-          className="upload-area"
-          onClick={() => fileRef.current.click()}
+        <div className="upload-area" onClick={() => fileRef.current.click()}
           onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-        >
+          onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}>
           <div className="upload-icon">📄</div>
           <div className="upload-text"><strong>Click or drag</strong> to upload TXT</div>
           <input ref={fileRef} type="file" className="upload-input" accept=".txt"
@@ -172,12 +174,8 @@ where score is 0-100 (lower = weaker, needs more attention).`);
 
         <div className="divider">or paste text</div>
 
-        <textarea
-          className="study-textarea"
-          placeholder="Paste your notes here..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
+        <textarea className="study-textarea" placeholder="Paste your notes here..."
+          value={text} onChange={(e) => setText(e.target.value)} />
 
         {text && <div className="mt8"><span className="tag tag-green">✓ {text.split(" ").length} words</span></div>}
 
@@ -192,7 +190,6 @@ where score is 0-100 (lower = weaker, needs more attention).`);
         {error && <p style={{ color: "var(--danger)", fontSize: "13px", marginTop: "12px" }}>⚠️ {error}</p>}
       </div>
 
-      {/* Output tabs */}
       <AnimatePresence>
         {(summary || weakTopics.length > 0) && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
@@ -211,7 +208,6 @@ where score is 0-100 (lower = weaker, needs more attention).`);
               )}
             </div>
 
-            {/* Summary */}
             {activeSection === "summary" && summary && (
               <div className="card">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
@@ -220,20 +216,17 @@ where score is 0-100 (lower = weaker, needs more attention).`);
                     <button className={`tts-btn ${speaking ? "speaking" : ""}`} onClick={toggleTTS}>
                       {speaking ? "⏹ Stop" : "🔊 Listen"}
                     </button>
-                    <button className="tts-btn" onClick={exportPDF}>
-                      📄 Export PDF
-                    </button>
+                    <button className="tts-btn" onClick={exportPDF}>📄 Export PDF</button>
                   </div>
                 </div>
                 <div className="summary-output">{summary}</div>
               </div>
             )}
 
-            {/* Weak Topics */}
             {activeSection === "weak" && weakTopics.length > 0 && (
               <div className="card">
                 <div className="card-title">⚠️ Weak Topics — Focus Here</div>
-                <div className="card-sub">Topics ranked by how much attention they need (lower score = needs more study).</div>
+                <div className="card-sub">Topics ranked by how much attention they need.</div>
                 {weakTopics.map((t, i) => (
                   <motion.div key={i} className="weak-topic-item"
                     initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}>
@@ -254,15 +247,14 @@ where score is 0-100 (lower = weaker, needs more attention).`);
                           style={{ background: getWeakColor(t.score) }}
                           initial={{ width: 0 }}
                           animate={{ width: `${t.score}%` }}
-                          transition={{ duration: 1, delay: i * 0.1 }}
-                        />
+                          transition={{ duration: 1, delay: i * 0.1 }} />
                       </div>
                     </div>
                   </motion.div>
                 ))}
                 <div className="mt16">
                   <button className="tts-btn" onClick={exportPDF} disabled={!summary}>
-                    📄 Export Full Report (Summary + Weak Topics)
+                    📄 Export Full Report
                   </button>
                 </div>
               </div>

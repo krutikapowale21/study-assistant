@@ -6,6 +6,18 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = "llama-3.3-70b-versatile";
 const LANG_NAMES = { en: "English", hi: "Hindi", es: "Spanish", fr: "French", de: "German", ja: "Japanese" };
 
+function cleanForSpeech(text) {
+  return text
+    .replace(/[*#_~`>]/g, "")
+    .replace(/\p{Emoji}/gu, "")
+    .replace(/[•·●■□▪▫–—]/g, "")
+    .replace(/\d+\.\s/g, "")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 async function askGroq(prompt) {
   const res = await fetch(GROQ_URL, {
     method: "POST",
@@ -38,7 +50,7 @@ export default function Flashcards({ lang = "en" }) {
     if (!text.trim()) { setError("Please add some study material first."); return; }
     setLoading(true); setError("");
     try {
-      const raw = await askGroq(`Generate 10 flashcards from the following study material in ${LANG_NAMES[lang] || "English"}. Each card should have a concise question/term on the front and a clear answer/definition on the back.
+      const raw = await askGroq(`Generate 10 flashcards from the following study material in ${LANG_NAMES[lang] || "English"}. Each card should have a concise question or term on the front and a clear answer or definition on the back. Use plain text only, no emojis or symbols.
 
 Return ONLY a valid JSON array, no markdown, no backticks:
 [{ "front": "Term or question", "back": "Definition or answer" }]
@@ -65,7 +77,7 @@ ${text.slice(0, 3000)}`);
   const speakCard = (txt) => {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(txt);
+    const u = new SpeechSynthesisUtterance(cleanForSpeech(txt));
     u.lang = lang === "hi" ? "hi-IN" : lang === "ja" ? "ja-JP" : lang === "es" ? "es-ES" : "en-US";
     window.speechSynthesis.speak(u);
   };
@@ -125,7 +137,6 @@ ${text.slice(0, 3000)}`);
             </div>
           </div>
 
-          {/* TTS for card */}
           <div className="row" style={{ justifyContent: "center", marginBottom: "12px" }}>
             <button className="tts-btn" onClick={() => speakCard(flipped ? cards[current].back : cards[current].front)}>
               🔊 Read aloud
