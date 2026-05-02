@@ -171,7 +171,7 @@ Study material: ${text.slice(0, 3000)}`);
 
           <div className="row mt16">
             <select className="styled-select" value={numQ} onChange={(e) => setNumQ(Number(e.target.value))}>
-              {[3,5,8,10,15].map(n => <option key={n} value={n}>{n} Questions</option>)}
+              {[3,5,8,10,15,100].map(n => <option key={n} value={n}>{n} Questions</option>)}
             </select>
             <select className="styled-select" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
               <option value="easy">Easy</option>
